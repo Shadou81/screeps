@@ -36,7 +36,7 @@ Creep.prototype.repairerTick = function(roomObjects){
             let check = this.repair(task);
             switch (check) {
                 case OK: break;
-                case ERR_NOT_IN_RANGE: this.moveTo(task); break;
+                case ERR_NOT_IN_RANGE: this.travelTo(task); break;
                 case ERR_NOT_ENOUGH_RESOURCES: this.memory.repairing = false; break;
                 case ERR_INVALID_TARGET: this.memory.task = 0; break;
             }
@@ -59,7 +59,7 @@ Creep.prototype.repairerTick = function(roomObjects){
                 let task = Game.getObjectById(containermem)
                 let check = this.withdraw(task, RESOURCE_ENERGY);
                 switch (check) {
-                    case ERR_NOT_IN_RANGE: this.moveTo(task); break;
+                    case ERR_NOT_IN_RANGE: this.travelTo(task); break;
                     case ERR_FULL: 
                         this.memory.repairing = true
                         this.memory.overhalf = true
@@ -76,7 +76,7 @@ Creep.prototype.repairerTick = function(roomObjects){
                 }
                 let flagname = this.memory.rally;
                 let rally = Game.flags[flagname];
-                if (this.pos.getRangeTo(rally) > 2){this.moveTo(rally);}
+                if (this.pos.getRangeTo(rally) > 2){this.travelTo(rally);}
             }
         }
     }
@@ -87,7 +87,7 @@ Creep.prototype.repairerTick = function(roomObjects){
         }
         let flagname = this.memory.rally;
         let rally = Game.flags[flagname];
-        if (this.pos.getRangeTo(rally) > 2){this.moveTo(rally);}
+        if (this.pos.getRangeTo(rally) > 1){this.travelTo(rally);}
     }
 }
     

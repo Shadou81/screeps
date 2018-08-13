@@ -39,8 +39,9 @@ Creep.prototype.distributorTick = function(roomObjects) {
             let check = this.transfer(task, RESOURCE_ENERGY);
             switch (check) {
                 case OK: 
+                    this.memory.task = 0;
                     break;
-                case ERR_NOT_IN_RANGE: this.moveTo(task); break;
+                case ERR_NOT_IN_RANGE: this.travelTo(task); break;
                 case ERR_NOT_ENOUGH_RESOURCES: 
                     this.memory.distributing = false; 
                     taskmem = this.getDistributorTask(roomObjects);
@@ -53,7 +54,7 @@ Creep.prototype.distributorTick = function(roomObjects) {
         if (!this.memory.distributing){
             let check = this.withdraw(task, RESOURCE_ENERGY);
             switch (check) {
-                case ERR_NOT_IN_RANGE: this.moveTo(task); break;
+                case ERR_NOT_IN_RANGE: this.travelTo(task); break;
                 case ERR_FULL:
                     this.memory.distributing = true;
                     this.memory.container = 0
@@ -81,7 +82,7 @@ Creep.prototype.distributorTick = function(roomObjects) {
                 if (link.energy > 0){
                     taskmem = this.memory.receivelink;
                     if (this.withdraw(link, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE){
-                        this.moveTo(link);
+                        this.travelTo(link);
                     }
                 }
             }
@@ -89,7 +90,7 @@ Creep.prototype.distributorTick = function(roomObjects) {
                 let storage = room.storage;
                 taskmem = storage.id
                     if (this.transfer(storage, RESOURCE_ENERGY) == ERR_NOT_IN_RANGE){
-                    this.moveTo(storage)
+                    this.travelTo(storage)
                 }
             }
         }
@@ -102,8 +103,8 @@ Creep.prototype.distributorTick = function(roomObjects) {
         //Get the flag object.
         let rally = Game.flags[this.memory.rally]
         //Get close.
-        if (this.pos.getRangeTo(rally) > 2){
-        this.moveTo(rally)
+        if (this.pos.getRangeTo(rally) > 1){
+        this.travelTo(rally)
         }
     }
 }

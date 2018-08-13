@@ -1,5 +1,9 @@
 "use strict";
 
 Creep.prototype.smalldistributorTick = function(roomObjects) {
-    this.distributorTick(roomObjects);
+    try {this.distributorTick(roomObjects);}
+    catch (err) {
+        require('role.distributor');
+        this.distributorTick(roomObjects);
+    }
 }

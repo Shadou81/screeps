@@ -6,7 +6,7 @@ Creep.prototype.reserverTick = function(creep) {
     let task = Game.getObjectById(taskmem);
     if (task){
         if(this.reserveController(task) == ERR_NOT_IN_RANGE){
-            this.moveTo(task, {reusePath: 20})
+            this.travelTo(task, {reusePath: 20})
         }
     }
 }

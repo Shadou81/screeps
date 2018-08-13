@@ -12,7 +12,7 @@ var roomObjects = function() {
 Room.prototype.initialize = function(roomObjects) {
     
     this.updateSpawnsList();
-    this.updateCreepsList();
+    this.updateHarvesters();
     this.updateContainers(roomObjects);
 }
 
@@ -21,7 +21,6 @@ Room.prototype.Tick = function(roomObjects) {
     this.replaceDeadCreeps(roomObjects);
     this.responseToFlags();
     this.manageSatellites();
-    //this.defendSatellites(roomObjects);
     this.warTick(roomObjects);
 
     for (let spawnName in this.memory.spawns){
@@ -92,19 +91,13 @@ Room.prototype.updateSpawnsList = function() {
     }
 }
 
-Room.prototype.updateCreepsList = function() {
-    for (let creepName in Game.creeps){
-        let creep = Game.creeps[creepName]
-        if (creep.memory.originroom == this.name){
-            this.memory.creeps[creepName] = {
-                name: creep.name,
-                role: creep.memory.role,
-                task: creep.memory.task
-            };
-        }
-    }
+Room.prototype.updateHarvesters = function() {
     for (let i=0; i<this.memory.sources.length; i++){
-        for (let j=(this.memory.config.creepcounts.maxharvesterpersource - 1); j>=0; j--){
+        let harvestRoom = this.memory.sources[i].harvestRoom;
+        if (this.memory.config.creepcounts.maxharvesterpersource < harvestRoom){
+            harvestRoom = this.memory.config.creepcounts.maxharvesterpersource;
+        }
+        for (let j=(harvestRoom - 1); j>=0; j--){
             let creepName = this.memory.sources[i].harvesters[j];
             let creep = Game.creeps[creepName];
             if (!creep) {
@@ -119,10 +112,30 @@ Room.prototype.newRoomSetup = function() {
     this.memory = this.memory || {};
     this.memory.spawnqueue = this.memory.spawnqueue || [];
     this.memory.creeps = this.memory.creeps || {};
-    this.memory.sources = this.memory.sources || this.find(FIND_SOURCES);
+    this.memory.sources = this.memory.sources || []
+    var sources = this.find(FIND_SOURCES);
+    for (let i=0; i<sources.length; i++){
+        this.memory.sources[i] = {id:sources[i].id, pos:sources[i].pos};
+    }
     for (let i=0; i<this.memory.sources.length; i++){
         this.memory.sources[i].harvesters = this.memory.sources[i].harvesters || [];
+        this.memory.sources[i].harvestRoom = this.memory.sources[i].harvestRoom || 0;
+        var sourceTerrain = []
+        sourceTerrain = this.lookForAtArea(
+            LOOK_TERRAIN, 
+            (this.memory.sources[i].pos.y - 1),
+            (this.memory.sources[i].pos.x - 1),
+            (this.memory.sources[i].pos.y + 1),
+            (this.memory.sources[i].pos.x + 1),
+            true
+            );
+        for (let j=0; j<sourceTerrain.length; j++){
+            if (sourceTerrain[j].terrain != 'wall'){
+                this.memory.sources[i].harvestRoom++;
+            }
+        }
     }
+    
     this.memory.config = this.memory.config || {};
 
     this.memory.config.creepcounts = this.memory.config.creepcounts || {
@@ -196,8 +209,195 @@ Room.prototype.updateTier = function(roomObjects){
         this.memory.config.tier = 4;
         this.memory.config.creepbodies.carrier = [CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE];
         this.memory.config.creepbodies.reserver = [CLAIM,CLAIM,MOVE,MOVE];
+        this.memory.config.creepbodies.upgrader = [WORK,WORK,WORK,WORK,WORK,CARRY,CARRY,CARRY,MOVE,MOVE,MOVE,MOVE]
         this.memory.config.creepcounts.reservers = 1;
     }
 }
+
+Room.prototype.getStructureList = function(roomObjects, type){
+    
+    if (roomObjects.roomstructures[this.name] == undefined) {
+        roomObjects.roomstructures[this.name] = (this.find(FIND_STRUCTURES));
+        if (Memory.MyOwnedRooms[this.name] != undefined){
+            if (Object.keys(Memory.MyOwnedRooms[this.name].satellites).length > 0){
+                for (let satelliteName in Memory.MyOwnedRooms[this.name].satellites){
+                    let satellite = Game.rooms[satelliteName];
+                    if (satellite){
+                        let satellitestructures = satellite.find(FIND_STRUCTURES)
+                        roomObjects.roomstructures[this.name] = roomObjects.roomstructures[this.name].concat(satellitestructures);
+                    }
+                }
+            }
+        }
+    }
+    switch (type){
+        case 'obstructions' : 
+            if (roomObjects.obstructions[this.name] == undefined){
+                roomObjects.obstructions[this.name] = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_WALL || struct.structureType == STRUCTURE_RAMPART));
+            }
+            return roomObjects.obstructions[this.name];
+        case 'link' :
+            let links = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_LINK));
+            return links
+        case 'storagereceivelink':
+            let roomlinks = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_LINK));
+            let linkstorage = this.storage
+            for (let i=0; i<roomlinks.length; i++){
+                let linkobj = roomlinks[i];
+                if (linkstorage.pos.getRangeTo(linkobj) == 1){
+                    return linkobj;
+                }
+            }
+            return 0
+        case 'repair' : 
+            let repairs = _.filter(roomObjects.roomstructures[this.name], (struct) => ((struct.hits <= (struct.hitsMax - this.memory.config.repairthreshold)) && 
+                                                                                       (struct.hits < this.memory.config.maxstructurehits)));
+            return repairs;
+        case 'container' : 
+            let containers = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_CONTAINER));
+            return containers;
+        case 'storage' :
+            let storage = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_CONTAINER ||
+                                                                                       struct.structureType == STRUCTURE_STORAGE ||
+                                                                                       struct.structureType == STRUCTURE_LINK));
+            return storage;
+        case 'energy' :
+            let energy = _.filter(roomObjects.roomstructures[this.name], (struct) => ((struct.structureType == STRUCTURE_CONTAINER ||
+                                                                                       struct.structureType == STRUCTURE_STORAGE ||
+                                                                                       struct.structureType == STRUCTURE_LINK) && 
+                ((struct.structureType == STRUCTURE_LINK) ? (struct.energy > 0):(struct.store[RESOURCE_ENERGY] > 0))));
+            return energy;
+        case 'refill' :
+            let refills = _.filter(roomObjects.roomstructures[this.name], (struct) => ((struct.structureType == STRUCTURE_SPAWN || 
+                                                                                        struct.structureType == STRUCTURE_EXTENSION) && 
+                                                                                       (struct.energy < struct.energyCapacity)));
+            return refills;
+        case 'tower':
+            let tower = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_TOWER));
+            return tower;
+        }
+}  
+Room.prototype.getConstructionsList = function(roomObjects) {
+    if (roomObjects.constructions[this.name] == undefined) {
+            roomObjects.constructions[this.name] = (this.find(FIND_MY_CONSTRUCTION_SITES));
+            if (Object.keys(Memory.MyOwnedRooms[this.name].satellites).length > 0){
+                for (let satelliteName in Memory.MyOwnedRooms[this.name].satellites){
+                    let satellite = Game.rooms[satelliteName];
+                    if (satellite){
+                        let satelliteconst = satellite.find(FIND_MY_CONSTRUCTION_SITES)
+                        roomObjects.constructions[this.name] = roomObjects.constructions[this.name].concat(satelliteconst);
+                    }
+                }
+            }
+        }
+        return roomObjects.constructions[this.name];
+}
+Room.prototype.getDroppedEnergy = function(roomObjects) {
+    
+    if (roomObjects.droppedenergy[this.name] == undefined) {
+        roomObjects.droppedenergy[this.name] = (this.find(FIND_DROPPED_RESOURCES));
+        if (Object.keys(Memory.MyOwnedRooms[this.name].satellites).length > 0){
+            for (let satelliteName in Memory.MyOwnedRooms[this.name].satellites){
+                let satellite = Game.rooms[satelliteName];
+                if (satellite){
+                    let satellitedrop = satellite.find(FIND_DROPPED_RESOURCES)
+                    roomObjects.droppedenergy[this.name] = roomObjects.droppedenergy[this.name].concat(satellitedrop);
+                }
+            }
+        }
+    }
+    return roomObjects.droppedenergy[this.name];
+}
+
+Room.prototype.getHostiles = function(roomObjects){
+
+    if (roomObjects.hostiles[this.name] == undefined){
+        roomObjects.hostiles[this.name] = this.find(FIND_HOSTILE_CREEPS);
+        if (Object.keys(Memory.MyOwnedRooms[this.name].satellites).length > 0){
+            for (let satelliteName in Memory.MyOwnedRooms[this.name].satellites){
+                let satellite = Game.rooms[satelliteName];
+                if (satellite){
+                    let satellitehostiles = satellite.find(FIND_HOSTILE_CREEPS)
+                    roomObjects.hostiles[this.name] = roomObjects.hostiles[this.name].concat(satellitehostiles);
+                }
+            }
+        }
+    }
+    return roomObjects.hostiles[this.name];
+}
+
+Room.prototype.getInjured = function(roomObjects){
+
+    var room = Game.rooms[this.name]
+    if (roomObjects.injured[this.name] == undefined){
+        roomObjects.injured[this.name] = this.find(FIND_MY_CREEPS);
+        roomObjects.injured[this.name] = _.filter(roomObjects.injured[this.name], (creep) => (creep.hits < creep.hitsMax))
+    }
+    return roomObjects.injured[this.name];
+}
+Room.prototype.getList = function(roomObjects, type){
+    
+    if (roomObjects.roomstructures[this.name] == undefined) {
+        roomObjects.roomstructures[this.name] = (this.find(FIND_STRUCTURES));
+        if (Memory.MyOwnedRooms[this.name] != undefined){
+            if (Object.keys(Memory.MyOwnedRooms[this.name].satellites).length > 0){
+                for (let satelliteName in Memory.MyOwnedRooms[this.name].satellites){
+                    let satellite = Game.rooms[satelliteName];
+                    if (satellite){
+                        let satellitestructures = satellite.find(FIND_STRUCTURES)
+                        roomObjects.roomstructures[this.name] = roomObjects.roomstructures[this.name].concat(satellitestructures);
+                    }
+                }
+            }
+        }
+    }
+    switch (type){
+        case 'obstructions' : 
+            if (roomObjects.obstructions[this.name] == undefined){
+                roomObjects.obstructions[this.name] = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_WALL || struct.structureType == STRUCTURE_RAMPART));
+            }
+            return roomObjects.obstructions[this.name];
+        case 'link' :
+            let links = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_LINK));
+            return links
+        case 'storagereceivelink':
+            let roomlinks = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_LINK));
+            let linkstorage = this.storage
+            for (let i=0; i<roomlinks.length; i++){
+                let linkobj = roomlinks[i];
+                if (linkstorage.pos.getRangeTo(linkobj) == 1){
+                    return linkobj;
+                }
+            }
+            return 0
+        case 'repair' : 
+            let repairs = _.filter(roomObjects.roomstructures[this.name], (struct) => ((struct.hits <= (struct.hitsMax - this.memory.config.repairthreshold)) && 
+                                                                                       (struct.hits < this.memory.config.maxstructurehits)));
+            return repairs;
+        case 'container' : 
+            let containers = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_CONTAINER));
+            return containers;
+        case 'storage' :
+            let storage = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_CONTAINER ||
+                                                                                       struct.structureType == STRUCTURE_STORAGE ||
+                                                                                       struct.structureType == STRUCTURE_LINK));
+            return storage;
+        case 'energy' :
+            let energy = _.filter(roomObjects.roomstructures[this.name], (struct) => ((struct.structureType == STRUCTURE_CONTAINER ||
+                                                                                       struct.structureType == STRUCTURE_STORAGE ||
+                                                                                       struct.structureType == STRUCTURE_LINK) && 
+                ((struct.structureType == STRUCTURE_LINK) ? (struct.energy > 0):(struct.store[RESOURCE_ENERGY] > 0))));
+            return energy;
+        case 'refill' :
+            let refills = _.filter(roomObjects.roomstructures[this.name], (struct) => ((struct.structureType == STRUCTURE_SPAWN || 
+                                                                                        struct.structureType == STRUCTURE_EXTENSION) && 
+                                                                                       (struct.energy < struct.energyCapacity)));
+            return refills;
+        case 'tower':
+            let tower = _.filter(roomObjects.roomstructures[this.name], (struct) => (struct.structureType == STRUCTURE_TOWER));
+            return tower;
+        }
+}
+
 
 module.exports = roomObjects;

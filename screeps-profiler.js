@@ -1,6 +1,28 @@
+/**
+Game.profiler.profile(ticks, [functionFilter]);
+Game.profiler.stream(ticks, [functionFilter]);
+Game.profiler.email(ticks, [functionFilter]);
+Game.profiler.background([functionFilter]);
+
+// Output current profile data.
+Game.profiler.output([lineCount]);
+
+// Reset the profiler, disabling any profiling in the process.
+Game.profiler.reset();
+
+Game.profiler.restart(); **/
+
+'use strict';
+
 let usedOnStart = 0;
 let enabled = false;
 let depth = 0;
+
+function AlreadyWrappedError() {
+  this.name = 'AlreadyWrappedError';
+  this.message = 'Error attempted to double wrap a function.';
+  this.stack = ((new Error())).stack;
+}
 
 function setupProfiler() {
   depth = 0; // reset depth, this needs to be done each tick.
@@ -14,7 +36,24 @@ function setupProfiler() {
     profile(duration, filter) {
       setupMemory('profile', duration || 100, filter);
     },
+    background(filter) {
+      setupMemory('background', false, filter);
+    },
+    restart() {
+      if (Profiler.isProfiling()) {
+        const filter = Memory.profiler.filter;
+        let duration = false;
+        if (!!Memory.profiler.disableTick) {
+          // Calculate the original duration, profile is enabled on the tick after the first call,
+          // so add 1.
+          duration = Memory.profiler.disableTick - Memory.profiler.enabledTick + 1;
+        }
+        const type = Memory.profiler.type;
+        setupMemory(type, duration, filter);
+      }
+    },
     reset: resetMemory,
+    output: Profiler.output,
   };
 
   overloadCPUCalc();
@@ -22,12 +61,13 @@ function setupProfiler() {
 
 function setupMemory(profileType, duration, filter) {
   resetMemory();
+  const disableTick = Number.isInteger(duration) ? Game.time + duration : false;
   if (!Memory.profiler) {
     Memory.profiler = {
       map: {},
       totalTime: 0,
       enabledTick: Game.time + 1,
-      disableTick: Game.time + duration,
+      disableTick,
       type: profileType,
       filter,
     };
@@ -51,8 +91,14 @@ function getFilter() {
   return Memory.profiler.filter;
 }
 
+const functionBlackList = [
+  'getUsed', // Let's avoid wrapping this... may lead to recursion issues and should be inexpensive.
+  'constructor', // es6 class constructors need to be called with `new`
+];
+
 function wrapFunction(name, originalFunction) {
-  return function wrappedFunction() {
+  if (originalFunction.profilerWrapped) { throw new AlreadyWrappedError(); }
+  function wrappedFunction() {
     if (Profiler.isProfiling()) {
       const nameMatchesFilter = name === getFilter();
       const start = Game.cpu.getUsed();
@@ -71,7 +117,13 @@ function wrapFunction(name, originalFunction) {
     }
 
     return originalFunction.apply(this, arguments);
-  };
+  }
+
+  wrappedFunction.profilerWrapped = true;
+  wrappedFunction.toString = () =>
+    `// screeps-profiler wrapped function:\n${originalFunction.toString()}`;
+
+  return wrappedFunction;
 }
 
 function hookUpPrototypes() {
@@ -83,14 +135,48 @@ function hookUpPrototypes() {
 function profileObjectFunctions(object, label) {
   const objectToWrap = object.prototype ? object.prototype : object;
 
-  Object.keys(objectToWrap).forEach(functionName => {
+  Object.getOwnPropertyNames(objectToWrap).forEach(functionName => {
     const extendedLabel = `${label}.${functionName}`;
-    try {
-      if (typeof objectToWrap[functionName] === 'function' && functionName !== 'getUsed') {
-        const originalFunction = objectToWrap[functionName];
-        objectToWrap[functionName] = profileFunction(originalFunction, extendedLabel);
+
+    const isBlackListed = functionBlackList.indexOf(functionName) !== -1;
+    if (isBlackListed) {
+      return;
+    }
+
+    const descriptor = Object.getOwnPropertyDescriptor(objectToWrap, functionName);
+    if (!descriptor) {
+      return;
+    }
+
+    const hasAccessor = descriptor.get || descriptor.set;
+    if (hasAccessor) {
+      const configurable = descriptor.configurable;
+      if (!configurable) {
+        return;
       }
-    } catch (e) { } /* eslint no-empty:0 */
+
+      const profileDescriptor = {};
+
+      if (descriptor.get) {
+        const extendedLabelGet = `${extendedLabel}:get`;
+        profileDescriptor.get = profileFunction(descriptor.get, extendedLabelGet);
+      }
+
+      if (descriptor.set) {
+        const extendedLabelSet = `${extendedLabel}:set`;
+        profileDescriptor.set = profileFunction(descriptor.set, extendedLabelSet);
+      }
+
+      Object.defineProperty(objectToWrap, functionName, profileDescriptor);
+      return;
+    }
+
+    const isFunction = typeof descriptor.value === 'function';
+    if (!isFunction) {
+      return;
+    }
+    const originalFunction = objectToWrap[functionName];
+    objectToWrap[functionName] = profileFunction(originalFunction, extendedLabel);
   });
 
   return objectToWrap;
@@ -113,18 +199,41 @@ const Profiler = {
   },
 
   emailProfile() {
-    Game.notify(Profiler.output());
+    Game.notify(Profiler.output(1000));
   },
 
-  output() {
-    const elapsedTicks = Game.time - Memory.profiler.enabledTick + 1;
+  output(passedOutputLengthLimit) {
+    const outputLengthLimit = passedOutputLengthLimit || 1000;
+    if (!Memory.profiler || !Memory.profiler.enabledTick) {
+      return 'Profiler not active.';
+    }
+
+    const endTick = Math.min(Memory.profiler.disableTick || Game.time, Game.time);
+    const startTick = Memory.profiler.enabledTick + 1;
+    const elapsedTicks = endTick - startTick;
     const header = 'calls\t\ttime\t\tavg\t\tfunction';
     const footer = [
       `Avg: ${(Memory.profiler.totalTime / elapsedTicks).toFixed(2)}`,
       `Total: ${Memory.profiler.totalTime.toFixed(2)}`,
       `Ticks: ${elapsedTicks}`,
     ].join('\t');
-    return [].concat(header, Profiler.lines().slice(0, 20), footer).join('\n');
+
+    const lines = [header];
+    let currentLength = header.length + 1 + footer.length;
+    const allLines = Profiler.lines();
+    let done = false;
+    while (!done && allLines.length) {
+      const line = allLines.shift();
+      // each line added adds the line length plus a new line character.
+      if (currentLength + line.length + 1 < outputLengthLimit) {
+        lines.push(line);
+        currentLength += line.length + 1;
+      } else {
+        done = true;
+      }
+    }
+    lines.push(footer);
+    return lines.join('\n');
   },
 
   lines() {
@@ -191,7 +300,10 @@ const Profiler = {
   },
 
   isProfiling() {
-    return enabled && !!Memory.profiler && Game.time <= Memory.profiler.disableTick;
+    if (!enabled || !Memory.profiler) {
+      return false;
+    }
+    return !Memory.profiler.disableTick || Game.time <= Memory.profiler.disableTick;
   },
 
   type() {
@@ -244,11 +356,9 @@ module.exports = {
     hookUpPrototypes();
   },
 
-  registerObject(object, label) {
-    return profileObjectFunctions(object, label);
-  },
+  output: Profiler.output,
 
-  registerFN(fn, functionName) {
-    return profileFunction(fn, functionName);
-  },
+  registerObject: profileObjectFunctions,
+  registerFN: profileFunction,
+  registerClass: profileObjectFunctions,
 };

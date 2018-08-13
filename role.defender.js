@@ -1,26 +1,26 @@
-roleDefender = {
+"use strict"
     
-    Tick: function(creep){
+Creep.prototype.defenderTick = function(roomObjects){
         
-        if (creep.spawning){return}
-        roomName = creep.memory.originroom;
-        room = Game.rooms[roomName];
+    if (creep.spawning){return}
+    roomName = this.memory.originroom;
+    room = Game.rooms[roomName];
         
-        hostiles = taskManager.getHostiles(roomName);
+    hostiles = taskManager.getHostiles(roomName);
         
-        if (hostiles.length < 0){
-            nearestHostile = creep.pos.findClosestByRange(hostiles);
-            hostileRange = creep.pos.getRangeTo(nearestHostile);
-            if (hostileRange > 3){
-                creep.moveTo(nearestHostile);
-            }
-            if (hostileRange < 3){
-                creep.rangedAttack(nearestHostile);
-                let path = PathFinder.search(creep, nearesthostile, {flee: true});
-                creep.moveByPath(path);
-            }
+    if (hostiles.length < 0){
+        nearestHostile = this.pos.findClosestByRange(hostiles);
+        hostileRange = this.pos.getRangeTo(nearestHostile);
+        if (hostileRange > 3){
+            this.travelTo(nearestHostile);
+        }
+        if (hostileRange <= 3){
+            this.rangedAttack(nearestHostile);
+        }
+        if (hostileRange < 3){
+            let path = PathFinder.search(this, nearesthostile, {flee: true});
+            this.moveByPath(path);
         }
     }
+    
 }
-
-module.exports = roleDefender;

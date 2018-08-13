@@ -12,11 +12,8 @@ Room.prototype.warTick = function(roomObjects){
         var warriors = _.filter(this.memory.creeps, (creep) => (creep.role == 'warrior'));
         this.memory.config.warriorsrequest = this.memory.config.warriorsrequest || 0;
         if (warriors.length < this.memory.config.warriorsrequest){
-            let warriorbody = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,
-                            MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,
-                            MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,MOVE,
-                            ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,
-                            ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,HEAL,HEAL,HEAL,HEAL,HEAL,];
+            let warriorbody = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK,
+                                MOVE,MOVE,MOVE,MOVE,MOVE];
             this.queueSpawn('warrior', 15, warriorflag.name, warriorbody);
         }
     }
@@ -55,7 +52,7 @@ Room.prototype.warTick = function(roomObjects){
             this.queueSpawn('sapper', 15, sapperflag.name, sapperbody);
         }
     }
-    /*let hostiles = this.getHostiles(this.name);
+    /** let hostiles = this.getHostiles(this.name);
     if (hostiles.length > 0){
         var defenders = _.filter(room.memory.creeps, (creep) => (creep.role == 'defender'));
         if (defenders.length < hostiles.length){
@@ -63,6 +60,6 @@ Room.prototype.warTick = function(roomObjects){
             let order = new spawnManager.creepOrder(room.name, 'defender', 12, null, defenderbody);
             spawnManager.queueSpawn(order);
         }
-    }*/
+    }**/
     
 }

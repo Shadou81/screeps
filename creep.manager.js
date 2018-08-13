@@ -8,5 +8,3 @@ Creep.prototype.Tick = function(roomObjects) {
         this[role + 'Tick'](roomObjects);
     }
 }
-
-

@@ -29,7 +29,7 @@ Creep.prototype.builderTick = function(roomObjects){
             let check = this.build(task);
             switch (check) {
                 case OK: break;
-                case ERR_NOT_IN_RANGE: this.moveTo(task); break;
+                case ERR_NOT_IN_RANGE: this.travelTo(task); break;
                 case ERR_NOT_ENOUGH_RESOURCES: 
                     this.memory.building = false
                     break;
@@ -51,7 +51,7 @@ Creep.prototype.builderTick = function(roomObjects){
             let check = this.harvest(source);
             switch (check) {
                 case OK: break;
-                case ERR_NOT_IN_RANGE: this.moveTo(task); break;
+                case ERR_NOT_IN_RANGE: this.travelTo(task); break;
                 case ERR_INVALID_TARGET: this.memory.task = 0; this.memory.source = 0; break;
             }
         }
@@ -68,9 +68,9 @@ Creep.prototype.builderTick = function(roomObjects){
                 let check = this.build(task);
                 switch (check) {
                     case OK: break;
-                    case ERR_NOT_IN_RANGE: this.moveTo(task); break;
+                    case ERR_NOT_IN_RANGE: this.travelTo(task); break;
                     case ERR_NOT_ENOUGH_RESOURCES: this.memory.building = false; break;
-                    case ERR_INVALID_TARGET: this.memory.task = 0; break;
+                    case ERR_INVALID_TARGET: this.memory.task = 0; this.memory.source = 0; break;
                 }
             }
             if (!this.memory.building){
@@ -81,13 +81,18 @@ Creep.prototype.builderTick = function(roomObjects){
                     task = Game.getObjectById(this.memory.container);
                     let check = this.withdraw(task, RESOURCE_ENERGY);
                     switch (check) {
-                        case ERR_NOT_IN_RANGE: this.moveTo(task); break;
+                        case ERR_NOT_IN_RANGE: 
+                            this.travelTo(task); 
+                            break;
                         case ERR_FULL: 
                             this.memory.building = true;
                             this.memory.container = 0
                             break;
-                        case OK: this.memory.container = 0;
-                        case ERR_NOT_ENOUGH_RESOURCES: this.memory.container = this.getBuilderTask(roomObjects);; break;
+                        case OK: 
+                            this.memory.container = 0;
+                        case ERR_NOT_ENOUGH_RESOURCES: 
+                            this.memory.container = this.getBuilderTask(roomObjects); 
+                            break;
                     }
                 }
                 else {
@@ -96,8 +101,8 @@ Creep.prototype.builderTick = function(roomObjects){
                         this.memory.rally = flagname;
                     }
                     let rally = Game.flags[this.memory.rally]
-                    if (this.pos.getRangeTo(rally) > 2){
-                    this.moveTo(rally);
+                    if (this.pos.getRangeTo(rally) > 1){
+                    this.travelTo(rally);
                     }
                 }
             }
@@ -108,8 +113,8 @@ Creep.prototype.builderTick = function(roomObjects){
                 this.memory.rally = flagname
             }
             let rally = Game.flags[this.memory.rally]
-            if (this.pos.getRangeTo(rally) > 2){
-            this.moveTo(rally)
+            if (this.pos.getRangeTo(rally) > 1){
+            this.travelTo(rally)
             }
         }
     }
@@ -138,7 +143,7 @@ Creep.prototype.getBuilderTask = function(roomObjects){
         if (tasklist.length > 0){
             let roomEnergy = _.sum(tasklist, (contain) => ((contain.structureType == STRUCTURE_LINK) ? (contain.energy):(contain.store[RESOURCE_ENERGY])));
             if (roomEnergy < room.memory.config.reserve){
-                tasklist = null;
+                return 0;
             }
         }
     }
@@ -148,6 +153,7 @@ Creep.prototype.getBuilderTask = function(roomObjects){
             task = tasklist[0]
         }
     }
+
     if (task){return task.id;}
     else {return 0;}
 

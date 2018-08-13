@@ -7,9 +7,25 @@ Room.prototype.addSatellite = function(flag){
         let satellite = Game.rooms[satelliteName]
         Memory.MyOwnedRooms[this.name].satellites[satelliteName] = satellite.controller.id;
         let sources = satellite.find(FIND_SOURCES);
-        this.memory.sources = this.memory.sources.concat(sources);
-        for (let i=(this.memory.sources.length-(sources.length)); i<this.memory.sources.length; i++){
-            this.memory.sources[i].harvesters = []
+        for (let i=this.memory.sources.length; i<this.memory.sources.length + sources.length; i++){
+            this.memory.sources[i] = {id: sources.id, pos: sources.pos};
+            this.memory.sources[i].harvesters = [];
+            this.memory.sources[i].harvestRoom = 0;
+            
+            var sourceTerrain = [];
+            sourceTerrain = this.lookForAtArea(
+            LOOK_TERRAIN, 
+            (this.memory.sources[i].pos.y - 1),
+            (this.memory.sources[i].pos.x - 1),
+            (this.memory.sources[i].pos.y + 1),
+            (this.memory.sources[i].pos.x + 1),
+            true
+            );
+            for (let j=0; j<sourceTerrain.length; j++){
+                if (sourceTerrain[j].terrain != 'wall'){
+                    this.memory.sources[i].harvestRoom++;
+                }
+            }
         }
         flag.remove()
     }
@@ -17,34 +33,16 @@ Room.prototype.addSatellite = function(flag){
 
 Room.prototype.removeSatellite = function(satelliteName){
         
-    for (let satellite in Memory.MyOwnedRooms[this.name].satellites){
+    for (satellite in Memory.MyOwnedRooms[this.name].satellites){
         if (satellite == satelliteName){
             let sources = this.memory.sources
             for (let i=(sources.length - 1); i >= 0; i--){
-                if (sources[i].room.name == satelliteName){
+                if (sources[i].pos.roomName == satelliteName){
                     this.memory.sources.splice(i, 1)
                 }
             }
             let ownedMemory = Memory.MyOwnedRooms[this.name].satellites;
             delete ownedMemory[satelliteName]
-        }
-    }
-}
-
-Room.prototype.defendSatellites = function(roomObjects){
-    let hostiles = this.getHostiles(roomObjects);
-    if (hostiles.length > 0){
-        for (let satelliteName in MemoryMyOwnedRooms[this.name].satellites){
-            for (let i=0; i<hostiles.length; i++){
-                if ((hostiles[i].owner == 'Invader') && (hostiles[i].room.name == satelliteName)){
-                    let satellitesearch = _.filter(this.memory.creeps, (creep) => ((creep.role == 'satellitedefender') && (creep.task == satelliteName)));
-                    if (satellitesearch == 0){
-                        let satellitedefenderbody = [TOUGH,TOUGH,TOUGH,TOUGH,TOUGH,MOVE,MOVE,MOVE,MOVE,MOVE,
-                                                     MOVE,MOVE,MOVE,MOVE,MOVE,ATTACK,ATTACK,ATTACK,ATTACK,ATTACK]
-                        this.queueSpawn('satellitedefender', 3, satelliteName, satellitedefenderbody);
-                    }
-                }
-            }
         }
     }
 }
@@ -96,61 +94,53 @@ Room.prototype.responseToFlags = function(){
             }
             else{
                 var explorer = _.filter(this.memory.creeps, (creep) => (creep.role == 'explorer') && (creep.task.roomName == flag.pos.roomName));
-                let place = new RoomPosition(25,25,satelliteName);
                 if (explorer.length < 1){
-                    this.queueSpawn('explorer', 5, place, [MOVE])
+                    this.queueSpawn('explorer', 5, flag.pos, [MOVE])
                 }
             }
         }
         if (flag.name == (this.name + '-')){
             this.removeSatellite(flag.pos.roomName);
-            flag.remove()
         }
         if (flag.name == (this.name + 'claim')){
-            if (Memory.ClaimTargets[this.name] == undefined){
-                Memory.ClaimTargets[this.name] = flag.pos.roomName;
+            if (Memory.ClaimTargets[flag.pos.roomName] == undefined){
+                Memory.ClaimTargets[flag.pos.roomName] = {}
+                Memory.ClaimTargets[flag.pos.roomName].claimer = this.name;
             }
         }
     }
 }
 
-Room.prototype.manageClaims = function(){
+/*manageClaims: function(){
         
-    for (let target in Memory.ClaimTargets){
-        let targetroom = Game.rooms[target];
-        let sourceroom = Game.rooms[Memory.ClaimTargets[target].claimer];
-        let flag = Game.rooms[sourceroom.name + 'claim'];
-        if (!targetroom){
-            var explorer = _.filter(this.memory.creeps, (creep) => (creep.role == 'explorer') && (creep.task.roomName == flag.pos.roomName));
-            let place = new RoomPosition(25,25,satelliteName);
-            if (explorer.length < 1){
-                this.queueSpawn('explorer', 5, place, [MOVE])
+        for (let target in Memory.ClaimTargets){
+            let targetroom = Game.rooms[target];
+            let sourceroom = Game.rooms[Memory.ClaimTargets[target].claimer];
+            flag = Game.rooms[sourceroom.name + 'claim'];
+            if (!targetroom){
+
+                roomManager.sendExplorer(sourceroom, target);
             }
-        }
-        if (targetroom){
-            if (!targetroom.controller.my){
-                if (targetroom.controller.reservation){
-                    if (targetroom.controller.reservation.username == 'Shadou'){
-                        var claimer = _.filter(this.memory.creeps, (creep) => (creep.role == 'claimer') && (creep.memory.task == flag.pos.roomName));
-                        if (claimer.length < 1){
-                            this.queuespawn('claimer', 5, flag.pos.roomName, [CLAIM,MOVE])
+            if (targetroom){
+                if (!targetroom.controller.my){
+                    if (targetroom.controller.reservation){
+                        if (targetroom.controller.reservation.username == 'Shadou'){
+                            roomManager.sendClaimer(sourceroom, targetroom)
+                        }
+                        
+                    }
+                    else{
+                        if (!targetroom.controller.owner || 
+                        ((targetroom.controller.level == 1) && (targetroom.ticksToDowngradenumber < 200))){
+                            roomManager.sendClaimer(sourceroom, targetroom);
                         }
                     }
                 }
-                else{
-                    if (!targetroom.controller.owner || 
-                    ((targetroom.controller.level == 1) && (targetroom.ticksToDowngrade < 200))){
-                        var claimer = _.filter(this.memory.creeps, (creep) => (creep.role == 'claimer') && (creep.memory.task == flag.pos.roomName));
-                        if (claimer.length < 1){
-                            this.queuespawn('claimer', 5, flag.pos.roomName, [CLAIM,MOVE])
-                        }                    }
+                else {
+                    roomManager.removeSatellite(targetroom.name)
+                    delete Memory.ClaimTargets[target];
+                    flag.remove()
                 }
             }
-            else {
-                this.removeSatellite(targetroom.name)
-                delete Memory.ClaimTargets[this.name];
-                flag.remove()
-            }
         }
-    }
-}
+    },*/

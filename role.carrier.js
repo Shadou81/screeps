@@ -28,7 +28,7 @@ Creep.prototype.carrierTick = function(roomObjects){
             task = Game.getObjectById(taskmem)
             let check = this.pickup(task);
             if(check == ERR_NOT_IN_RANGE){
-                this.moveTo(task)
+                this.travelTo(task)
             }
             if((check == OK) || (check == ERR_FULL)){
                 this.memory.task = 0;
@@ -37,7 +37,7 @@ Creep.prototype.carrierTick = function(roomObjects){
                 let check = this.withdraw(task, RESOURCE_ENERGY)
                 switch (check) {
                     case ERR_NOT_IN_RANGE: 
-                        this.moveTo(task); 
+                        this.travelTo(task); 
                         break;
                     case ERR_FULL:
                         this.memory.carrying = true;
@@ -58,7 +58,7 @@ Creep.prototype.carrierTick = function(roomObjects){
             let check = this.transfer(task, RESOURCE_ENERGY)
             switch (check) {
                 case ERR_NOT_IN_RANGE: 
-                    this.moveTo(task); 
+                    this.travelTo(task); 
                     break;
                 case ERR_NOT_ENOUGH_RESOURCES:
                     this.memory.task = 0;
@@ -77,8 +77,8 @@ Creep.prototype.carrierTick = function(roomObjects){
                 this.memory.rally = flagname;
             }
         let rally = Game.flags[this.memory.rally]
-        if (this.pos.getRangeTo(rally) > 2){
-        this.moveTo(rally)
+        if (this.pos.getRangeTo(rally) > 1){
+        this.travelTo(rally)
         }
     }
 }
